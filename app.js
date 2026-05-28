@@ -1109,6 +1109,12 @@
       plantField.innerHTML += `<option value="${p}">${p}</option>`;
     });
 
+    const catField = document.getElementById('project-category-field');
+    catField.innerHTML = '';
+    state.systemSettings.categories.forEach(c => {
+      catField.innerHTML += `<option value="${c}">${c}</option>`;
+    });
+
     const employees = await db.getEmployees();
     const ownerField = document.getElementById('project-owner-field');
     ownerField.innerHTML = '';
@@ -2642,6 +2648,14 @@
       filterPlant.innerHTML = '<option value="All">All Plants</option>';
       state.systemSettings.plants.forEach(p => {
         filterPlant.innerHTML += `<option value="${p}">${p}</option>`;
+      });
+    }
+
+    const filterCat = document.getElementById('project-filter-category');
+    if (filterCat) {
+      filterCat.innerHTML = '<option value="All">All Categories</option>';
+      state.systemSettings.categories.forEach(c => {
+        filterCat.innerHTML += `<option value="${c}">${c}</option>`;
       });
     }
 
