@@ -288,11 +288,13 @@
     },
 
     async saveTask(task) {
-      // Ensure dates are valid
-      if (new Date(task.due_date) < new Date(task.start_date)) {
-        task.due_date = task.start_date;
+      // Ensure dates are valid (only when both dates are present — partial updates skip this)
+      if (task.start_date && task.due_date) {
+        if (new Date(task.due_date) < new Date(task.start_date)) {
+          task.due_date = task.start_date;
+        }
+        task.duration = Math.max(1, Math.round((new Date(task.due_date) - new Date(task.start_date)) / (1000 * 60 * 60 * 24)) + 1);
       }
-      task.duration = Math.max(1, Math.round((new Date(task.due_date) - new Date(task.start_date)) / (1000 * 60 * 60 * 24)) + 1);
 
       if (!state.isOfflineMode) {
         try {
@@ -840,6 +842,13 @@
       return;
     }
 
+    // Unified SPA Router Guard: Prevent double-routing and asynchronous race conditions by
+    // letting the window 'hashchange' event listener be the single source of truth for routing.
+    if (window.location.hash !== hash) {
+      window.location.hash = hash;
+      return;
+    }
+
     let cleanHash = hash.replace(/^#\/?/, '');
     let view = 'dashboard';
     let projectId = null;
@@ -853,7 +862,6 @@
 
     state.currentView = view;
     state.activeProjectId = projectId;
-    window.location.hash = hash;
 
     // Handle Active States of Sidebar menu buttons
     document.querySelectorAll('.sidebar-menu .menu-item').forEach(btn => {
@@ -1022,6 +1030,26 @@
   // VIEW: PROJECTS PORTAL RENDERERS
   // =========================================================================
   async function loadProjectsList() {
+    // Re-populate filter dropdowns from latest system settings each time
+    const filterPlant = document.getElementById('project-filter-plant');
+    if (filterPlant) {
+      const prevPlant = filterPlant.value;
+      filterPlant.innerHTML = '<option value="All">All Plants</option>';
+      state.systemSettings.plants.forEach(p => {
+        filterPlant.innerHTML += `<option value="${p}">${p}</option>`;
+      });
+      filterPlant.value = prevPlant || 'All';
+    }
+    const filterCat = document.getElementById('project-filter-category');
+    if (filterCat) {
+      const prevCat = filterCat.value;
+      filterCat.innerHTML = '<option value="All">All Categories</option>';
+      state.systemSettings.categories.forEach(c => {
+        filterCat.innerHTML += `<option value="${c}">${c}</option>`;
+      });
+      filterCat.value = prevCat || 'All';
+    }
+
     const tbody = document.getElementById('projects-table-body');
     tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Refreshing project matrix...</td></tr>';
 
@@ -1197,6 +1225,9 @@
 
       // Fetch active tasks list
       state.tasks = await db.getTasks(projectId);
+
+      // Fetch employees list to cache in state
+      state.employees = await db.getEmployees();
       
       // Calculate dynamic Gantt date span bounds
       calculateTimelineSpan();
@@ -1301,7 +1332,7 @@
     return flattened;
   }
 
-  async function renderWorkbookWorkspace() {
+  function renderWorkbookWorkspace() {
     const tableBody = document.getElementById('scheduler-tasks-body');
     const headerGrid = document.getElementById('gantt-timeline-header-grid');
     const colsLayer = document.getElementById('gantt-grid-columns-layer');
@@ -1358,8 +1389,8 @@
     // 2. Structuring Tree tasks
     const activeWorkspaceTasks = buildTaskTree(state.tasks);
     
-    // Fetch dropdown list options
-    const emps = await db.getEmployees();
+    // Fetch dropdown list options (read synchronously from state to prevent race-condition duplicates)
+    const emps = state.employees || [];
     const depts = state.systemSettings.departments;
 
     if (activeWorkspaceTasks.length === 0) {
@@ -2640,23 +2671,6 @@
 
     if (!sbUrl && !sbKey && !forceOffline) {
       document.getElementById('modal-supabase-config').classList.add('active');
-    }
-
-    // Populate dropdown arrays
-    const filterPlant = document.getElementById('project-filter-plant');
-    if (filterPlant) {
-      filterPlant.innerHTML = '<option value="All">All Plants</option>';
-      state.systemSettings.plants.forEach(p => {
-        filterPlant.innerHTML += `<option value="${p}">${p}</option>`;
-      });
-    }
-
-    const filterCat = document.getElementById('project-filter-category');
-    if (filterCat) {
-      filterCat.innerHTML = '<option value="All">All Categories</option>';
-      state.systemSettings.categories.forEach(c => {
-        filterCat.innerHTML += `<option value="${c}">${c}</option>`;
-      });
     }
 
     // Manage Routing & Session loops
