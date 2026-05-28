@@ -668,10 +668,17 @@
       if (!state.isOfflineMode) {
         try {
           // Upsert keys into cloud system_settings table
-          await state.supabaseClient.from('system_settings').upsert({ key: 'plant_list', value: settings.plants });
-          await state.supabaseClient.from('system_settings').upsert({ key: 'departments', value: settings.departments });
-          await state.supabaseClient.from('system_settings').upsert({ key: 'categories', value: settings.categories });
-          await state.supabaseClient.from('system_settings').upsert({ key: 'admin_pin', value: { pin: settings.adminPin } });
+          const r1 = await state.supabaseClient.from('system_settings').upsert({ key: 'plant_list', value: settings.plants });
+          if (r1.error) throw new Error(`plant_list: ${r1.error.message}`);
+
+          const r2 = await state.supabaseClient.from('system_settings').upsert({ key: 'departments', value: settings.departments });
+          if (r2.error) throw new Error(`departments: ${r2.error.message}`);
+
+          const r3 = await state.supabaseClient.from('system_settings').upsert({ key: 'categories', value: settings.categories });
+          if (r3.error) throw new Error(`categories: ${r3.error.message}`);
+
+          const r4 = await state.supabaseClient.from('system_settings').upsert({ key: 'admin_pin', value: { pin: settings.adminPin } });
+          if (r4.error) throw new Error(`admin_pin: ${r4.error.message}`);
         } catch (e) {
           console.error("Cloud saveSystemSettings error:", e);
           throw e;
@@ -2211,7 +2218,8 @@
       db.logActivity(null, null, 'UPDATE_SETTINGS', `Updated system lists and admin configurations`);
     } catch (err) {
       console.error(err);
-      showToast('Error saving system configurations.', 'error');
+      const errMsg = err.message || err.details || JSON.stringify(err);
+      showToast(`Error saving configurations: ${errMsg}`, 'error');
     }
   }
 
