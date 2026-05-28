@@ -1170,7 +1170,7 @@
   // =========================================================================
   // VIEW: CORE INTERACTIVE SCHEDULER & GANTT ENGINE
   // =========================================================================
-  const GANTT_COL_WIDTH = 40; // Spacious calendar day column width (improved from 28px)
+  let GANTT_COL_WIDTH = parseInt(localStorage.getItem('osci_gantt_col_width')) || 40; // Spacious calendar day column width (improved from 28px)
   let timelineDates = []; // Array of Date objects displayed in Gantt columns
   const expandedNodes = new Set(); // Remembers closed state of rows
 
