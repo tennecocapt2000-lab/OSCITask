@@ -319,10 +319,10 @@ INSERT INTO tasks (id, project_id, parent_id, wbs, name, owner_code, department,
 ('b0000000-0000-0000-0000-000000000006', 'a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000004', '2.2', 'Visual Management & Floor Layout Marking', 'EMP004', 'Logistics', '2026-05-18', '2026-05-25', 20, 'In Progress', 'Critical', 6);
 
 -- Main Task 3
-INSERT INTO tasks (id, project_id, parent_id, wbs, name, owner_code, department, start_date, due_date, progress, status, priority, sort_order) VALUES
-('b0000000-0000-0000-0000-000000000007', 'a0000000-0000-0000-0000-000000000001', NULL, '3', 'Shining & Standardizing (Seiso & Seiketsu)', 'EMP002', 'OS&CI', '2026-05-26', '2026-06-15', 0, 'Not Started', 'Medium', 7),
-('b0000000-0000-0000-0000-000000000008', 'a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000007', '3.1', 'Establish Cleaning Schedules & Responsibilities', 'EMP002', 'OS&CI', '2026-05-26', '2026-06-02', 0, 'Not Started', 'Medium', 8),
-('b0000000-0000-0000-0000-000000000009', 'a0000000-0000-0000-0000-000000000007', 'b0000000-0000-0000-0000-000000000007', '3.2', 'Final Audit & Standardization Board Setup', 'EMP003', 'Quality', '2026-06-03', '2026-06-15', 0, 'Not Started', 'High', 9, TRUE); -- Milestone
+INSERT INTO tasks (id, project_id, parent_id, wbs, name, owner_code, department, start_date, due_date, progress, status, priority, sort_order, is_milestone) VALUES
+('b0000000-0000-0000-0000-000000000007', 'a0000000-0000-0000-0000-000000000001', NULL, '3', 'Shining & Standardizing (Seiso & Seiketsu)', 'EMP002', 'OS&CI', '2026-05-26', '2026-06-15', 0, 'Not Started', 'Medium', 7, FALSE),
+('b0000000-0000-0000-0000-000000000008', 'a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000007', '3.1', 'Establish Cleaning Schedules & Responsibilities', 'EMP002', 'OS&CI', '2026-05-26', '2026-06-02', 0, 'Not Started', 'Medium', 8, FALSE),
+('b0000000-0000-0000-0000-000000000009', 'a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000007', '3.2', 'Final Audit & Standardization Board Setup', 'EMP003', 'Quality', '2026-06-03', '2026-06-15', 0, 'Not Started', 'High', 9, TRUE); -- Milestone
 
 -- Enable the trigger back to normal operations
 ALTER TABLE tasks ENABLE TRIGGER trg_rollup_task_changes;
