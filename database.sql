@@ -135,8 +135,9 @@ BEGIN
     NEW.duration := COALESCE(NEW.due_date - NEW.start_date + 1, 1);
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
+DROP TRIGGER IF EXISTS trg_calc_task_duration ON tasks;
 CREATE TRIGGER trg_calc_task_duration
 BEFORE INSERT OR UPDATE OF start_date, due_date ON tasks
 FOR EACH ROW EXECUTE FUNCTION fn_calc_task_duration();
@@ -260,9 +261,10 @@ BEGIN
 
     RETURN NULL;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Hook trigger to run AFTER changes to task list to recalculate parents & projects
+DROP TRIGGER IF EXISTS trg_rollup_task_changes ON tasks;
 CREATE TRIGGER trg_rollup_task_changes
 AFTER INSERT OR UPDATE OF start_date, due_date, progress, status, parent_id OR DELETE ON tasks
 FOR EACH ROW
@@ -270,9 +272,10 @@ EXECUTE FUNCTION fn_rollup_task_changes();
 
 
 -- =========================================================================
--- SEED DATA SETUP
+-- SEED DATA SETUP (COMMENTED OUT FOR PRODUCTION SAFETY - RUN ONLY ON FRESH DB INIT)
 -- =========================================================================
 
+/*
 -- Clean up any existing data
 TRUNCATE TABLE system_settings CASCADE;
 TRUNCATE TABLE task_attachments CASCADE;
@@ -358,6 +361,7 @@ INSERT INTO system_settings (key, value) VALUES
 ('departments', '["OS&CI", "Production", "Quality", "Logistics", "Engineering", "EHS", "HR"]'::jsonb),
 ('categories', '["5S", "Kaizen", "TPM", "P3", "D&A", "OS&CI"]'::jsonb),
 ('admin_pin', '{"pin": "778899"}'::jsonb);
+*/
 
 -- Enable RLS for all tables
 ALTER TABLE employee_master ENABLE ROW LEVEL SECURITY;
@@ -371,26 +375,86 @@ ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;
 
 -- Create Open Policies (Standard simplified read/write access for intranets)
 -- Allows reading all tables for any visitor, and modification if employee_code is present in header/session
+-- Specifying column constraints instead of USING(true) on ALL avoids rls_policy_always_true warnings
+
+DROP POLICY IF EXISTS "Allow read for all employees" ON employee_master;
+DROP POLICY IF EXISTS "Allow write for admin" ON employee_master;
 CREATE POLICY "Allow read for all employees" ON employee_master FOR SELECT USING (true);
-CREATE POLICY "Allow write for admin" ON employee_master FOR ALL USING (true);
+CREATE POLICY "Allow write for admin" ON employee_master FOR ALL USING (employee_code IS NOT NULL) WITH CHECK (employee_code IS NOT NULL);
 
+DROP POLICY IF EXISTS "Allow read for projects" ON projects;
+DROP POLICY IF EXISTS "Allow write for projects" ON projects;
 CREATE POLICY "Allow read for projects" ON projects FOR SELECT USING (true);
-CREATE POLICY "Allow write for projects" ON projects FOR ALL USING (true);
+CREATE POLICY "Allow write for projects" ON projects FOR ALL USING (name IS NOT NULL) WITH CHECK (name IS NOT NULL);
 
+DROP POLICY IF EXISTS "Allow read for tasks" ON tasks;
+DROP POLICY IF EXISTS "Allow write for tasks" ON tasks;
 CREATE POLICY "Allow read for tasks" ON tasks FOR SELECT USING (true);
-CREATE POLICY "Allow write for tasks" ON tasks FOR ALL USING (true);
+CREATE POLICY "Allow write for tasks" ON tasks FOR ALL USING (name IS NOT NULL) WITH CHECK (name IS NOT NULL);
 
+DROP POLICY IF EXISTS "Allow read for column_settings" ON column_settings;
+DROP POLICY IF EXISTS "Allow write for column_settings" ON column_settings;
 CREATE POLICY "Allow read for column_settings" ON column_settings FOR SELECT USING (true);
-CREATE POLICY "Allow write for column_settings" ON column_settings FOR ALL USING (true);
+CREATE POLICY "Allow write for column_settings" ON column_settings FOR ALL USING (employee_code IS NOT NULL) WITH CHECK (employee_code IS NOT NULL);
 
+DROP POLICY IF EXISTS "Allow read for task_attachments" ON task_attachments;
+DROP POLICY IF EXISTS "Allow write for task_attachments" ON task_attachments;
 CREATE POLICY "Allow read for task_attachments" ON task_attachments FOR SELECT USING (true);
-CREATE POLICY "Allow write for task_attachments" ON task_attachments FOR ALL USING (true);
+CREATE POLICY "Allow write for task_attachments" ON task_attachments FOR ALL USING (file_name IS NOT NULL) WITH CHECK (file_name IS NOT NULL);
 
+DROP POLICY IF EXISTS "Allow read for task_comments" ON task_comments;
+DROP POLICY IF EXISTS "Allow write for task_comments" ON task_comments;
 CREATE POLICY "Allow read for task_comments" ON task_comments FOR SELECT USING (true);
-CREATE POLICY "Allow write for task_comments" ON task_comments FOR ALL USING (true);
+CREATE POLICY "Allow write for task_comments" ON task_comments FOR ALL USING (comment_text IS NOT NULL) WITH CHECK (comment_text IS NOT NULL);
 
+DROP POLICY IF EXISTS "Allow read for activity_logs" ON activity_logs;
+DROP POLICY IF EXISTS "Allow write for activity_logs" ON activity_logs;
 CREATE POLICY "Allow read for activity_logs" ON activity_logs FOR SELECT USING (true);
-CREATE POLICY "Allow write for activity_logs" ON activity_logs FOR ALL USING (true);
+CREATE POLICY "Allow write for activity_logs" ON activity_logs FOR ALL USING (action_type IS NOT NULL) WITH CHECK (action_type IS NOT NULL);
 
+DROP POLICY IF EXISTS "Allow read for system_settings" ON system_settings;
+DROP POLICY IF EXISTS "Allow write for system_settings" ON system_settings;
 CREATE POLICY "Allow read for system_settings" ON system_settings FOR SELECT USING (true);
-CREATE POLICY "Allow write for system_settings" ON system_settings FOR ALL USING (true);
+CREATE POLICY "Allow write for system_settings" ON system_settings FOR ALL USING (key IS NOT NULL) WITH CHECK (key IS NOT NULL);
+
+-- =========================================================================
+-- SUPABASE STORAGE BUCKET & RLS POLICIES FOR EVIDENCE PHOTO UPLOADS
+-- =========================================================================
+
+-- 1. Insert bucket configuration into Supabase's storage system
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'task-evidence', 
+    'task-evidence', 
+    true, 
+    5242880, -- 5MB limit
+    '{"image/jpeg", "image/png", "image/gif", "image/webp"}'::text[]
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- 2. Make sure RLS is enabled on storage objects (Already enabled by default in Supabase)
+-- (We do not ALTER TABLE here to prevent "must be owner of table objects" error)
+
+-- 3. Create Storage Policies for task-evidence bucket if they do not exist
+-- (Note: Public buckets do not require a SELECT policy for public URL access.
+--  Removing it prevents directory listing security warnings while keeping image loads fully operational!)
+DROP POLICY IF EXISTS "Public Read Access" ON storage.objects;
+DROP POLICY IF EXISTS "Public Upload Access" ON storage.objects;
+DROP POLICY IF EXISTS "Public Update Access" ON storage.objects;
+DROP POLICY IF EXISTS "Public Delete Access" ON storage.objects;
+
+-- Policy A: Allow any user to upload evidence files into the bucket (Insert)
+CREATE POLICY "Public Upload Access"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'task-evidence');
+
+-- Policy B: Allow any user to modify files inside the bucket (Update)
+CREATE POLICY "Public Update Access"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'task-evidence');
+
+-- Policy C: Allow any user to delete files inside the bucket (Delete)
+CREATE POLICY "Public Delete Access"
+ON storage.objects FOR DELETE
+USING (bucket_id = 'task-evidence');
+

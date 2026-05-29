@@ -590,8 +590,9 @@
           this.logActivity(null, taskId, 'UPLOAD_EVIDENCE', `Uploaded cloud evidence "${fileName}"`);
           return data[0];
         } catch (err) {
-          console.error("Supabase Storage upload failed, writing locally to sandbox:", err);
-          showToast('Failed cloud upload. Saved to sandboxed memory.', 'info');
+          console.error("Supabase Storage upload failed:", err);
+          showToast(`Cloud upload failed: ${err.message || err}`, 'error');
+          throw err; // Stop execution and prevent running local sandbox code in cloud mode!
         }
       }
 
@@ -626,7 +627,11 @@
           const { error } = await state.supabaseClient.from('task_attachments').delete().eq('id', id);
           if (error) throw error;
           return true;
-        } catch (e) { console.error("Cloud delete attachment failed:", e); }
+        } catch (e) {
+          console.error("Cloud delete attachment failed:", e);
+          showToast(`Cloud delete failed: ${e.message || e}`, 'error');
+          throw e;
+        }
       }
 
       const sand = this.getSandbox();
@@ -941,6 +946,213 @@
       document.getElementById('kpi-delayed-tasks').textContent = delayedTasks.length;
       document.getElementById('kpi-due-week').textContent = dueThisWeek.length;
       document.getElementById('kpi-completed-projects').textContent = completedKaizens;
+
+      // =========================================================================
+      // DYNAMIC SVG CHARTS GENERATION (APPLE STYLE VISUAL ANALYTICS)
+      // =========================================================================
+
+      // 1. Task Status Donut Chart Calculations
+      const statusCounts = {
+        'Not Started': 0,
+        'In Progress': 0,
+        'Completed': 0,
+        'Delayed': 0
+      };
+
+      allTasks.forEach(t => {
+        const s = t.status || 'Not Started';
+        if (statusCounts.hasOwnProperty(s)) {
+          statusCounts[s]++;
+        } else {
+          statusCounts['Not Started']++;
+        }
+      });
+
+      const donutSvg = document.getElementById('donut-chart-svg');
+      const donutLegend = document.getElementById('donut-chart-legend');
+      const totalTasksCount = allTasks.length;
+      
+      document.getElementById('donut-center-value').textContent = totalTasksCount;
+      document.getElementById('donut-center-label').textContent = 'Tasks';
+      document.getElementById('donut-center-value').style.color = 'var(--text-primary)';
+      
+      donutSvg.innerHTML = '';
+      donutLegend.innerHTML = '';
+
+      if (totalTasksCount === 0) {
+        donutSvg.innerHTML = `
+          <circle cx="50" cy="50" r="35" stroke="var(--border-color)" stroke-width="8" fill="none" />
+        `;
+        donutLegend.innerHTML = '<span style="color: var(--text-secondary); font-size: 11px; padding: 12px 0;">No tasks found.</span>';
+      } else {
+        const statuses = [
+          { name: 'Not Started', count: statusCounts['Not Started'], color: 'var(--status-gray-text)' },
+          { name: 'In Progress', count: statusCounts['In Progress'], color: 'var(--status-blue-text)' },
+          { name: 'Completed', count: statusCounts['Completed'], color: 'var(--status-green-text)' },
+          { name: 'Delayed', count: statusCounts['Delayed'], color: 'var(--status-red-text)' }
+        ];
+
+        let currentOffset = 0;
+        const radius = 35;
+        const circumference = 2 * Math.PI * radius; // ~219.91
+
+        statuses.forEach(st => {
+          if (st.count === 0) return;
+          
+          const percentage = st.count / totalTasksCount;
+          const strokeLength = percentage * circumference;
+          
+          // Draw Circle segment SVG
+          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('class', 'donut-segment');
+          circle.setAttribute('cx', '50');
+          circle.setAttribute('cy', '50');
+          circle.setAttribute('r', radius.toString());
+          circle.setAttribute('stroke', st.color);
+          circle.setAttribute('stroke-dasharray', `${strokeLength} ${circumference - strokeLength}`);
+          circle.setAttribute('stroke-dashoffset', currentOffset.toString());
+          
+          // Hover events on segment
+          circle.addEventListener('mouseenter', () => {
+            document.getElementById('donut-center-value').textContent = st.count;
+            document.getElementById('donut-center-label').textContent = st.name;
+            document.getElementById('donut-center-value').style.color = st.color;
+          });
+          circle.addEventListener('mouseleave', () => {
+            document.getElementById('donut-center-value').textContent = totalTasksCount;
+            document.getElementById('donut-center-label').textContent = 'Tasks';
+            document.getElementById('donut-center-value').style.color = 'var(--text-primary)';
+          });
+
+          donutSvg.appendChild(circle);
+          currentOffset -= strokeLength; // Clockwise displacement
+
+          // Add to Interactive Legend
+          const legendItem = document.createElement('div');
+          legendItem.className = 'legend-item';
+          const pct = (percentage * 100).toFixed(0) + '%';
+          legendItem.innerHTML = `
+            <div class="legend-color" style="background-color: ${st.color};"></div>
+            <span>${st.name}</span>
+            <span class="legend-value">${st.count} <span style="font-size: 8px; color: var(--text-tertiary); font-weight: normal; margin-left: 2px;">(${pct})</span></span>
+          `;
+
+          legendItem.addEventListener('mouseenter', () => {
+            circle.dispatchEvent(new Event('mouseenter'));
+            circle.style.strokeWidth = '11';
+          });
+          legendItem.addEventListener('mouseleave', () => {
+            circle.dispatchEvent(new Event('mouseleave'));
+            circle.style.strokeWidth = '';
+          });
+
+          donutLegend.appendChild(legendItem);
+        });
+      }
+
+      // 2. Category Task Volume Distribution Calculations
+      const categoriesList = state.systemSettings.categories || ['5S', 'Kaizen', 'TPM', 'P3', 'D&A', 'OS&CI'];
+      const categoryCounts = {};
+      categoriesList.forEach(cat => {
+        categoryCounts[cat] = 0;
+      });
+
+      allTasks.forEach(t => {
+        const proj = projs.find(p => p.id === t.project_id);
+        if (proj && categoryCounts.hasOwnProperty(proj.category)) {
+          categoryCounts[proj.category]++;
+        }
+      });
+
+      const barSvg = document.getElementById('bar-chart-svg');
+      const barLegend = document.getElementById('bar-chart-legend');
+      
+      barSvg.innerHTML = '';
+      barLegend.innerHTML = '';
+
+      if (totalTasksCount === 0) {
+        barSvg.innerHTML = `
+          <text x="100" y="55" text-anchor="middle" fill="var(--text-secondary)" font-size="10">No tasks distribution data.</text>
+        `;
+      } else {
+        const maxVal = Math.max(...Object.values(categoryCounts), 1);
+        const barWidth = 14;
+        const chartWidth = 170; // 200 - margins
+        const spacing = (chartWidth - (categoriesList.length * barWidth)) / (categoriesList.length - 1 || 1);
+        
+        // Draw standard dotted grid lines
+        const gridLinesCount = 3;
+        for (let g = 0; g <= gridLinesCount; g++) {
+          const yVal = 15 + (g * (75 / gridLinesCount));
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('class', 'bar-grid-line');
+          line.setAttribute('x1', '15');
+          line.setAttribute('y1', yVal.toString());
+          line.setAttribute('x2', '190');
+          line.setAttribute('y2', yVal.toString());
+          barSvg.appendChild(line);
+        }
+
+        categoriesList.forEach((cat, idx) => {
+          const count = categoryCounts[cat] || 0;
+          const barHeight = (count / maxVal) * 70; // Map max to 70px height
+          const x = 15 + (idx * (barWidth + spacing));
+          const y = 90 - barHeight;
+
+          // HSL dynamic colored gradients by shifting index hue
+          const barColor = `color-mix(in srgb, var(--color-primary) ${100 - (idx * 12)}%, var(--color-primary-light))`;
+
+          // Generate Bar Rectangle
+          const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          rect.setAttribute('class', 'bar-rect');
+          rect.setAttribute('x', x.toString());
+          rect.setAttribute('y', y.toString());
+          rect.setAttribute('width', barWidth.toString());
+          rect.setAttribute('height', Math.max(2, barHeight).toString()); // Min 2px
+          rect.setAttribute('rx', '3'); // Rounded edge
+          rect.setAttribute('fill', barColor);
+
+          // Category name label
+          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.setAttribute('class', 'bar-text');
+          label.setAttribute('x', (x + barWidth / 2).toString());
+          label.setAttribute('y', '102');
+          label.textContent = cat;
+
+          // Numeric value label above bar
+          const valLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          valLabel.setAttribute('class', 'bar-value-text');
+          valLabel.setAttribute('x', (x + barWidth / 2).toString());
+          valLabel.setAttribute('y', (y - 4).toString());
+          valLabel.textContent = count;
+
+          barSvg.appendChild(rect);
+          barSvg.appendChild(label);
+          barSvg.appendChild(valLabel);
+
+          // Horizontal Legend badge
+          const legendItem = document.createElement('div');
+          legendItem.className = 'legend-item';
+          legendItem.innerHTML = `
+            <div class="legend-color" style="background-color: ${barColor}; border-radius: 2px; width: 6px; height: 6px;"></div>
+            <span>${cat}</span>
+            <span class="legend-value">${count}</span>
+          `;
+
+          legendItem.addEventListener('mouseenter', () => {
+            rect.style.filter = 'brightness(1.15)';
+            rect.style.stroke = 'var(--color-primary)';
+            rect.style.strokeWidth = '0.5px';
+          });
+          legendItem.addEventListener('mouseleave', () => {
+            rect.style.filter = '';
+            rect.style.stroke = '';
+            rect.style.strokeWidth = '';
+          });
+
+          barLegend.appendChild(legendItem);
+        });
+      }
 
       // Fill "My Tasks Checklist"
       const myTasksBox = document.getElementById('dashboard-my-tasks');

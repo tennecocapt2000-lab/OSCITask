@@ -131,6 +131,49 @@
           </div>
         </div>
         
+        <!-- VISUAL ANALYTICS PANEL -->
+        <div class="dashboard-analytics-section">
+          <!-- TASK STATUS DONUT CHART -->
+          <div class="analytics-card" id="status-donut-card">
+            <div class="analytics-card-header">
+              <h4 class="analytics-card-title">Task Status Analysis</h4>
+              <div class="analytics-card-subtitle">Real-time status breakdown</div>
+            </div>
+            <div class="donut-chart-container">
+              <div class="donut-svg-wrapper">
+                <svg viewBox="0 0 100 100" class="donut-svg" id="donut-chart-svg">
+                  <!-- Generated Dynamically -->
+                </svg>
+                <div class="donut-center-info">
+                  <span class="donut-center-number" id="donut-center-value">0</span>
+                  <span class="donut-center-label" id="donut-center-label">Tasks</span>
+                </div>
+              </div>
+              <div class="chart-legend" id="donut-chart-legend">
+                <!-- Generated Dynamically -->
+              </div>
+            </div>
+          </div>
+
+          <!-- KAIZEN CATEGORY BAR CHART -->
+          <div class="analytics-card" id="category-bar-card">
+            <div class="analytics-card-header">
+              <h4 class="analytics-card-title">Kaizen Program Distribution</h4>
+              <div class="analytics-card-subtitle">Task volumes by project categories</div>
+            </div>
+            <div class="bar-chart-container">
+              <div class="bar-svg-wrapper">
+                <svg viewBox="0 0 200 110" class="bar-svg" id="bar-chart-svg">
+                  <!-- Generated Dynamically -->
+                </svg>
+              </div>
+              <div class="chart-legend" id="bar-chart-legend">
+                <!-- Generated Dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+        
         <!-- SPLIT DASHBOARD SECTION -->
         <div class="dashboard-split">
           <!-- MY TASK LIST CHECKLIST -->
